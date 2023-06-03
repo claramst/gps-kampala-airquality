@@ -59,13 +59,11 @@ print(last_day.site_id.unique().shape)
 last_hour = last_day[last_day['IndexTime']==23]
 print(last_hour.site_id.unique().shape)
 
-# #### Forecasting last hour
-
-train = df.drop(last_hour.index)
+train = df.drop(last_day.index)
 train_no_outliers = pd.DataFrame()
 
-for site in df.site_id.unique():
-    site_df = df[df['site_id']==site]
+for site in train.site_id.unique():
+    site_df = train[train['site_id']==site]
     Q1 = site_df['pm2_5_calibrated_value'].quantile(0.25)
     Q3 = site_df['pm2_5_calibrated_value'].quantile(0.75)
     IQR = Q3 - Q1
@@ -74,8 +72,8 @@ for site in df.site_id.unique():
 
 train = train_no_outliers
 
-def train_test_forecast_hour_gp(df, site_id, kernel):
-    test = df.loc[last_hour.index]
+def train_test_forecast_gp(df, site_id, kernel):
+    test = df.loc[last_day.index]
     test = test[test['site_id'] == site_id]
 
     mses = np.zeros(3)
@@ -137,7 +135,7 @@ gpflow.set_trainable(periodic_kernel.kernels[1].period, False)
 
 forecast_hour_mses = np.zeros(len(sites))
 for i in range(0, len(sites)):
-    mse = train_test_forecast_hour_gp(df, sites[i], periodic_kernel)
+    mse = train_test_forecast_gp(df, sites[i], periodic_kernel)
     forecast_hour_mses[i] = mse
 
 fm_hour = forecast_hour_mses[forecast_hour_mses != 0]
@@ -151,7 +149,7 @@ print(max_rmse)
 
 site_rmses = dict(zip(sites, np.sqrt(fm_hour)))
 
-output_folder = 'forecastingPeriodicNoOutliers'
+output_folder = 'no_outliers/forecasting_results/'
 
 os.makedirs(output_folder, exist_ok = True)
 

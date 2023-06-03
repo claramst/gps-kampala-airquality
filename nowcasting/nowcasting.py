@@ -82,12 +82,12 @@ std_longitude = df['longitude'].std(axis=0)
 #
 
 def train_test_gp(df, site_id, kernel):
-    mses = np.zeros((3))
+    mses = np.zeros((4))
     # train = get_closest_data(df, site_id)
     test = df[df['site_id']==site_id]
     train = df.drop(test.index)
 
-    for i in range(3):
+    for i in range(4):
       if len(test) > 250:
           rand_test = test.sample(n=250, random_state=i)
       else:
@@ -107,7 +107,8 @@ def train_test_gp(df, site_id, kernel):
       X_normalised[3] = (X_normalised[3] - mean_longitude) / std_longitude
       X_normalised = X_normalised.T
 
-      Y_normalised = (Y - mean_calibrated_pm2_5) / std_calibrated_pm2_5
+      # Y_normalised = (Y - mean_calibrated_pm2_5) / std_calibrated_pm2_5
+      Y_normalised = (Y - mean_raw_pm2_5) / std_raw_pm2_5
 
       model = gpflow.models.GPR(
           (X_normalised, Y_normalised),
@@ -167,9 +168,9 @@ site_mses = dict(zip(sites, np.sqrt(mses)))
 
 parent_folder = 'nowcasting/'
 if rbf:
-    sub_folder = 'RBF/'
+    sub_folder = 'rbf_results/'
 else:
-    sub_folder = 'Periodic/'
+    sub_folder = 'periodic_results/'
 
 output_folder = parent_folder + sub_folder
 os.makedirs(parent_folder, exist_ok = True)

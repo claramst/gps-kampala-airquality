@@ -142,7 +142,7 @@ print(max_rmse)
 
 site_rmses = dict(zip(sites, np.sqrt(periodic_mses)))
 
-output_folder = 'nowcastingPeriodicNoOutliers'
+output_folder = 'no_outliers/nowcasting_results/'
 
 os.makedirs(output_folder, exist_ok = True)
 

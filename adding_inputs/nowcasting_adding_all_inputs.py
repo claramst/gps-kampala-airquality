@@ -61,7 +61,8 @@ df = df[['Day', 'Time', 'IndexTime', 'IndexDay', 'timestamp',
 'pm2_5_calibrated_value', 'pm2_5_raw_value', 'latitude', 'longitude', 'site_id']]
 
 df['timestamp'] = pd.to_datetime(df['timestamp'])
-weather_df['datetime'] = pd.to_datetime(weather_df['datetime'], utc=True)
+weather_df['datetime'] = pd.to_datetime(weather_df['datetime'])
+weather_df = weather_df.set_index('datetime').tz_localize('Africa/Kampala').tz_convert("utc").reset_index()
 
 df = df.merge(weather_df, left_on='timestamp', right_on='datetime')
 df = df.drop(['windgust', 'datetime'], axis=1)
@@ -195,7 +196,7 @@ rbf2 = gpflow.kernels.SquaredExponential(active_dims=[3], lengthscales=[0.2])
 rbf3 = gpflow.kernels.SquaredExponential(active_dims=[4, 5, 6, 7, 8, 9])
 
 # periodic_kernel = day_period + hour_period + (rbf1 * rbf2) + rbf3
-periodic_kernel = day_period + hour_period + (rbf1 * rbf2) + rbf3 
+periodic_kernel = day_period + hour_period + (rbf1 * rbf2) + rbf3
 
 periodic_kernel = day_period + hour_period + (rbf1 * rbf2)
 gpflow.set_trainable(periodic_kernel.kernels[0].period, False)

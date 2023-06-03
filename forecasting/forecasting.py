@@ -156,9 +156,9 @@ site_rmses = dict(zip(sites, np.sqrt(mses)))
 
 parent_folder = 'forecasting/'
 if rbf:
-    sub_folder = 'rbf/'
+    sub_folder = 'rbf_results/'
 else:
-    sub_folder = 'periodic/'
+    sub_folder = 'periodic_results/'
 
 output_folder = parent_folder + sub_folder
 os.makedirs(parent_folder, exist_ok = True)

@@ -5,22 +5,14 @@ import time
 import sys
 from scipy.cluster.vq import kmeans2
 import pandas as pd
+import argparse
+import os
 
 from jax.lib import xla_bridge
 
 df = pd.read_csv('nov-data.csv')
 
-nov_df_no_outliers = pd.DataFrame()
-
-for site in nov_df.site_id.unique():
-  site_df = nov_df[nov_df['site_id']==site_id]
-  Q1 = site_df['pm2_5_calibrated_value'].quantile(0.25)
-  Q3 = site_df['pm2_5_calibrated_value'].quantile(0.75)
-  IQR = Q3 - Q1
-  final_df = site_df[~((site_df['pm2_5_calibrated_value']<(Q1-1.5*IQR)) | (site_df['pm2_5_calibrated_value']>(Q3+1.5*IQR)))]
-  nov_df_no_outliers = pd.concat([nov_df_no_outliers, final_df], ignore_index=True)
-
-df = nov_df_no_outliers
+# nov_df_no_outliers = pd.DataFrame()
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--site_index', type=int, default=0, help='selects site')
@@ -34,18 +26,6 @@ forecasting = args.forecasting
 
 sites = df.site_id.unique()
 test_site = sites[site_index]
-
-if forecasting:
-    last_day = df[df['Day'].astype(str)=='2021-11-30']
-    last_hour = last_day[last_day['IndexTime']==23]
-    train = df.drop(last_hour.index)
-    test = df.loc[last_hour.index]
-    test = test[test['site_id'] == site_id]
-    if len(test) == 0:
-        sys.exit("Site has no readings at forecast test time")
-else:
-    test = df[df['site_id']==test_site]
-    train = df.drop(test.index)
 
 def datetime_to_epoch(datetime):
     """
@@ -122,9 +102,6 @@ df['epoch'] = datetime_to_epoch(df['timestamp'])
 df = df.merge(weather_df, left_on='timestamp', right_on='datetime')
 df = df.drop(['windgust', 'datetime'], axis=1)
 
-test = df[df['site_id']==test_site]
-train = df.drop(test.index)
-
 X = df[['epoch', 'latitude', 'longitude']].astype('float').to_numpy()
 Y = df[['pm2_5_calibrated_value']].to_numpy()
 
@@ -136,12 +113,20 @@ Y = Y[unique_idx, :]
 # For the filtering methods to work we need a full spatio-temporal grid
 X_raw, Y_raw = pad_with_nan_to_make_grid(X.copy(), Y.copy())
 
+
+# if forecasting:
+#     ### TODO
+# else:
+test = df[df['site_id']==test_site]
+train = df.drop(test.index)
+train = train.sample(n=50, random_state=0)
+
 test_latitude = test.latitude.unique()[0]
 test_longitude = test.longitude.unique()[0]
+
 test_indices = ((X_raw[:,2]==test_longitude) & (X_raw[:,1]==test_latitude)).nonzero()
 train_indices = ((X_raw[:,2]!=test_longitude) | (X_raw[:,1]!=test_latitude)).nonzero()
 
-#Collect training and testing data
 X_train, Y_train = X_raw.copy(), Y_raw.copy()
 Y_train[test_indices, :] = np.nan #to keep grid structure in X we just mask the testing data in the training set
 
@@ -155,15 +140,6 @@ X_train_norm = normalise_df(X_train, wrt_to=X_train)
 X_test_norm = normalise_df(X_test, wrt_to=X_train)
 X_all_norm = normalise_df(X_all, wrt_to=X_train)
 
-
-def train_test_split_indices(N, split=0.8, seed=0):
-    np.random.seed(seed)
-    rand_index = np.random.permutation(N)
-
-    N_tr =  int(N * split)
-
-    return rand_index[:N_tr], rand_index[N_tr:]
-
 #Normalise Data input
 def normalise(x, wrt_to):
     return (x - np.mean(wrt_to))/np.std(wrt_to)
@@ -173,7 +149,6 @@ def normalise_df(x, wrt_to):
 
 def un_normalise_df(x, wrt_to):
     return x* np.std(wrt_to, axis=0) + np.mean(wrt_to, axis=0)
-
 
 X = X_train_norm
 Y = Y_train
@@ -269,7 +244,8 @@ t1 = time.time()
 # print('optimisation time: %2.2f secs' % (t1-t0))
 avg_time_taken = (t1-t0)/iters
 total_time_taken = t1 - t0
-print('total time taken: %2.2f secs' % t1 - t0')
+print('total time taken:')
+print(total_time_taken)
 print('average iter time: %2.2f secs' % avg_time_taken)
 
 posterior_mean, posterior_var = model.predict_y(X=t_t, R=R_t)
@@ -284,14 +260,15 @@ print(rmse)
 site_id_formatted = test_site.replace(" ", "")
 site_id_formatted = test_site.replace("/", "")
 
-folder_outputs = f'sparseGP_M={M}/' + site_id_formatted
+folder_outputs = f'st_svgp_M={M}/' + site_id_formatted + '/'
 
 if forecasting:
-    sub_folder = 'forecasting/'
-else
-    sub_folder = 'nowcasting/'
+    sub_folder = 'forecasting_results'
+else:
+    sub_folder = 'nowcasting_results'
 
 os.makedirs(folder_outputs, exist_ok = True)
+os.makedirs(folder_outputs + sub_folder, exist_ok = True)
 
 np.savetxt(folder_outputs + sub_folder + '/mse.txt', np.array([rmse]))
-np.savetxt(folder_outputs + sub_folder + '/variance.txt', np.array([posterior_var]))
+np.savetxt(folder_outputs + sub_folder + '/variance.txt', np.array(posterior_var))
