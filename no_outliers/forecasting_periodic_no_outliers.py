@@ -76,15 +76,11 @@ def train_test_forecast_gp(df, site_id, kernel):
     test = df.loc[last_day.index]
     test = test[test['site_id'] == site_id]
 
-    mses = np.zeros(3)
+    mses = np.zeros(4)
 
-    for i in range(3):
+    for i in range(4):
       if len(test) == 0:
         return 0
-      if len(test) > 250:
-          rand_test = test.sample(n=250, random_state=i)
-      else:
-          rand_test = test
 
       if len(train) > 1000:
           rand_train = train.sample(n=1000, random_state=i)
@@ -140,7 +136,7 @@ for i in range(0, len(sites)):
 
 fm_hour = forecast_hour_mses[forecast_hour_mses != 0]
 
-avg_rmse = np.sqrt(np.average(fm_hour))
+avg_rmse = np.average(np.sqrt(periodic_mses))
 max_rmse = np.sqrt(np.max(fm_hour))
 min_rmse = np.sqrt(np.min(fm_hour))
 print(min_rmse)

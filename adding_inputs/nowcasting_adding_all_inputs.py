@@ -29,7 +29,8 @@ for site in nov_df.site_id.unique():
   final_df = site_df[~((site_df['pm2_5_calibrated_value']<(Q1-1.5*IQR)) | (site_df['pm2_5_calibrated_value']>(Q3+1.5*IQR)))]
   nov_df_no_outliers = pd.concat([nov_df_no_outliers, final_df], ignore_index=True)
 
-df = nov_df_no_outliers
+df_no_outliers = nov_df_no_outliers
+df = nov_df
 
 sites = df.site_id.unique()
 print("Number of sites:")
@@ -111,12 +112,11 @@ mean_cloud_cover = df['cloudcover'].mean(axis=0)
 std_cloud_cover = df['cloudcover'].std(axis=0)
 
 def train_test_gp(df, site_id, kernel, input_features):
-    mses = np.zeros((3))
-    # train = get_closest_data(df, site_id)
+    mses = np.zeros((4))
     test = df[df['site_id']==site_id]
-    train = df.drop(test.index)
+    train = df_no_outliers[df_no_outliers['site_id'] != site_id]
 
-    for i in range(3):
+    for i in range(4):
         if len(test) == 0:
             return 0
         if len(test) > 250:
@@ -210,7 +210,7 @@ for i in range(0, len(sites)):
     mse = train_test_gp(df, sites[i], periodic_kernel, input_features)
     periodic_mses[i] = mse
 
-avg_rmse = np.sqrt(np.average(periodic_mses))
+avg_rmse = np.average(np.sqrt(periodic_mses))
 max_rmse = np.sqrt(np.max(periodic_mses))
 min_rmse = np.sqrt(np.min(periodic_mses))
 print(min_rmse)

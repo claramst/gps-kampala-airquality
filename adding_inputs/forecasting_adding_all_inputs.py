@@ -16,20 +16,20 @@ import tensorflow as tf
 tf.config.threading.set_inter_op_parallelism_threads(1)
 tf.config.threading.set_intra_op_parallelism_threads(1)
 
-nov_df = pd.read_csv('nov-data.csv')
+df = pd.read_csv('nov-data.csv')
 weather_df = pd.read_csv('weather-data.csv')
 
-nov_df_no_outliers = pd.DataFrame()
-
-for site in nov_df.site_id.unique():
-  site_df = nov_df[nov_df['site_id']==site]
-  Q1 = site_df['pm2_5_calibrated_value'].quantile(0.25)
-  Q3 = site_df['pm2_5_calibrated_value'].quantile(0.75)
-  IQR = Q3 - Q1
-  final_df = site_df[~((site_df['pm2_5_calibrated_value']<(Q1-1.5*IQR)) | (site_df['pm2_5_calibrated_value']>(Q3+1.5*IQR)))]
-  nov_df_no_outliers = pd.concat([nov_df_no_outliers, final_df], ignore_index=True)
-
-df = nov_df_no_outliers
+# nov_df_no_outliers = pd.DataFrame()
+#
+# for site in nov_df.site_id.unique():
+#   site_df = nov_df[nov_df['site_id']==site]
+#   Q1 = site_df['pm2_5_calibrated_value'].quantile(0.25)
+#   Q3 = site_df['pm2_5_calibrated_value'].quantile(0.75)
+#   IQR = Q3 - Q1
+#   final_df = site_df[~((site_df['pm2_5_calibrated_value']<(Q1-1.5*IQR)) | (site_df['pm2_5_calibrated_value']>(Q3+1.5*IQR)))]
+#   nov_df_no_outliers = pd.concat([nov_df_no_outliers, final_df], ignore_index=True)
+#
+# df = nov_df_no_outliers
 
 sites = df.site_id.unique()
 print("Number of sites:")
@@ -119,16 +119,27 @@ print(last_hour.site_id.unique().shape)
 
 # #### Forecasting last hour
 
-train = df.drop(last_hour.index)
+train = df.drop(last_day.index)
+train_no_outliers = pd.DataFrame()
+
+for site in train.site_id.unique():
+    site_df = train[train['site_id']==site]
+    Q1 = site_df['pm2_5_calibrated_value'].quantile(0.25)
+    Q3 = site_df['pm2_5_calibrated_value'].quantile(0.75)
+    IQR = Q3 - Q1
+    final_df = site_df[~((site_df['pm2_5_calibrated_value']<(Q1-1.5*IQR)) | (site_df['pm2_5_calibrated_value']>(Q3+1.5*IQR)))]
+    train_no_outliers = pd.concat([train_no_outliers, final_df], ignore_index=True)
+
+train = train_no_outliers
 
 
 def train_test_forecast_hour_gp(df, site_id, kernel, input_features):
     test = df.loc[last_day.index]
     test = test[test['site_id'] == site_id]
 
-    mses = np.zeros(3)
+    mses = np.zeros(4)
 
-    for i in range(3):
+    for i in range(4):
         if len(test) == 0:
             return 0
         if len(test) > 250:
@@ -227,7 +238,7 @@ for i in range(0, len(sites)):
 
 fm_hour = forecast_hour_mses[forecast_hour_mses != 0]
 
-avg_rmse = np.sqrt(np.average(fm_hour))
+avg_rmse = np.average(np.sqrt(fm_hour))
 max_rmse = np.sqrt(np.max(fm_hour))
 min_rmse = np.sqrt(np.min(fm_hour))
 print(min_rmse)

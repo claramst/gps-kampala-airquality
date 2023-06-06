@@ -67,15 +67,11 @@ mean_longitude = df['longitude'].mean(axis=0)
 std_longitude = df['longitude'].std(axis=0)
 
 def train_test_gp(df, site_id, kernel):
-    mses = np.zeros((3))
+    mses = np.zeros((4))
     test = df[df['site_id']==site_id]
     train = df_no_outliers[df_no_outliers['site_id'] != site_id]
 
-    for i in range(3):
-      if len(test) > 250:
-          rand_test = test.sample(n=250, random_state=i)
-      else:
-          rand_test = test
+    for i in range(4):
 
       if len(train) > 1000:
           rand_train = train.sample(n=1000, random_state=i)
@@ -133,7 +129,7 @@ for i in range(0, len(sites)):
     mse = train_test_gp(df, sites[i], periodic_kernel)
     periodic_mses[i] = mse
 
-avg_rmse = np.sqrt(np.average(periodic_mses))
+avg_rmse = np.average(np.sqrt(periodic_mses))
 max_rmse = np.sqrt(np.max(periodic_mses))
 min_rmse = np.sqrt(np.min(periodic_mses))
 print(min_rmse)

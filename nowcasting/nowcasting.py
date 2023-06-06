@@ -88,11 +88,6 @@ def train_test_gp(df, site_id, kernel):
     train = df.drop(test.index)
 
     for i in range(4):
-      if len(test) > 250:
-          rand_test = test.sample(n=250, random_state=i)
-      else:
-          rand_test = test
-
       if len(train) > 1000:
           rand_train = train.sample(n=1000, random_state=i)
       else:
@@ -157,7 +152,7 @@ for i in range(0, len(sites)):
     mse = train_test_gp(df, sites[i], kernel)
     mses[i] = mse
 
-avg_rmse = np.sqrt(np.average(mses))
+avg_rmse = np.average(np.sqrt(mses))
 max_rmse = np.sqrt(np.max(mses))
 min_rmse = np.sqrt(np.min(mses))
 print(min_rmse)

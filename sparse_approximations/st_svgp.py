@@ -12,7 +12,15 @@ from jax.lib import xla_bridge
 
 df = pd.read_csv('nov-data.csv')
 
-# nov_df_no_outliers = pd.DataFrame()
+df_no_outliers = pd.DataFrame()
+
+for site in nov_df.site_id.unique():
+  site_df = df[df['site_id']==site]
+  Q1 = site_df['pm2_5_calibrated_value'].quantile(0.25)
+  Q3 = site_df['pm2_5_calibrated_value'].quantile(0.75)
+  IQR = Q3 - Q1
+  final_df = site_df[~((site_df['pm2_5_calibrated_value']<(Q1-1.5*IQR)) | (site_df['pm2_5_calibrated_value']>(Q3+1.5*IQR)))]
+  df_no_outliers = pd.concat([df_no_outliers, final_df], ignore_index=True)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--site_index', type=int, default=0, help='selects site')
@@ -113,13 +121,16 @@ Y = Y[unique_idx, :]
 # For the filtering methods to work we need a full spatio-temporal grid
 X_raw, Y_raw = pad_with_nan_to_make_grid(X.copy(), Y.copy())
 
-
-# if forecasting:
-#     ### TODO
-# else:
-test = df[df['site_id']==test_site]
-train = df.drop(test.index)
-train = train.sample(n=50, random_state=0)
+if forecasting:
+    last_day = df[df['Day'].astype(str)=='2021-11-30']
+    test = df.loc[last_day.index]
+    test = test[test['site_id'] == test_site]
+    train = df_no_outliers[df_no_outliers['Day'].astype(str) !='2021-11-30']
+    if len(test) == 0:
+        sys.exit("Site has no readings at forecast test time")
+else:
+    test = df[df['site_id']==test_site]
+    train = df_no_outliers[df_no_outliers['site_id'] != test_site]
 
 test_latitude = test.latitude.unique()[0]
 test_longitude = test.longitude.unique()[0]
@@ -139,16 +150,6 @@ Y_all = Y_raw
 X_train_norm = normalise_df(X_train, wrt_to=X_train)
 X_test_norm = normalise_df(X_test, wrt_to=X_train)
 X_all_norm = normalise_df(X_all, wrt_to=X_train)
-
-#Normalise Data input
-def normalise(x, wrt_to):
-    return (x - np.mean(wrt_to))/np.std(wrt_to)
-
-def normalise_df(x, wrt_to):
-    return (x - np.mean(wrt_to, axis=0))/np.std(wrt_to, axis=0)
-
-def un_normalise_df(x, wrt_to):
-    return x* np.std(wrt_to, axis=0) + np.mean(wrt_to, axis=0)
 
 X = X_train_norm
 Y = Y_train

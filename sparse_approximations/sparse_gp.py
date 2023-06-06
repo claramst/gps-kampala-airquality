@@ -20,19 +20,18 @@ tf.config.threading.set_intra_op_parallelism_threads(1)
 nov_df = pd.read_csv('nov-data.csv')
 weather_df = pd.read_csv('weather-data.csv')
 
-# nov_df_no_outliers = pd.DataFrame()
-#
-# for site in nov_df.site_id.unique():
-#   site_df = nov_df[nov_df['site_id']==site]
-#   Q1 = site_df['pm2_5_calibrated_value'].quantile(0.25)
-#   Q3 = site_df['pm2_5_calibrated_value'].quantile(0.75)
-#   IQR = Q3 - Q1
-#   final_df = site_df[~((site_df['pm2_5_calibrated_value']<(Q1-1.5*IQR)) | (site_df['pm2_5_calibrated_value']>(Q3+1.5*IQR)))]
-#   nov_df_no_outliers = pd.concat([nov_df_no_outliers, final_df], ignore_index=True)
-#
-# df = nov_df
-# df_no_outliers = nov_df_no_outliers
+nov_df_no_outliers = pd.DataFrame()
+
+for site in nov_df.site_id.unique():
+  site_df = nov_df[nov_df['site_id']==site]
+  Q1 = site_df['pm2_5_calibrated_value'].quantile(0.25)
+  Q3 = site_df['pm2_5_calibrated_value'].quantile(0.75)
+  IQR = Q3 - Q1
+  final_df = site_df[~((site_df['pm2_5_calibrated_value']<(Q1-1.5*IQR)) | (site_df['pm2_5_calibrated_value']>(Q3+1.5*IQR)))]
+  nov_df_no_outliers = pd.concat([nov_df_no_outliers, final_df], ignore_index=True)
+
 df = nov_df
+df_no_outliers = nov_df_no_outliers
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--site_index', type=int, default=0, help='selects site')
@@ -76,17 +75,14 @@ df = df.drop(['windgust', 'datetime'], axis=1)
 
 if forecasting:
     last_day = df[df['Day'].astype(str)=='2021-11-30']
-    last_hour = last_day[last_day['IndexTime']==23]
-    train = df.drop(last_hour.index)
-    test = df.loc[last_hour.index]
-    test = test[test['site_id'] == site_id]
+    test = df.loc[last_day.index]
+    test = test[test['site_id'] == test_site]
+    train = df_no_outliers[df_no_outliers['Day'].astype(str) !='2021-11-30']
     if len(test) == 0:
         sys.exit("Site has no readings at forecast test time")
 else:
     test = df[df['site_id']==test_site]
-    train = df.drop(test.index)
-    train = train.sample(n=50, random_state=0)
-
+    train = df_no_outliers[df_no_outliers['site_id'] != test_site]
 
 """
 

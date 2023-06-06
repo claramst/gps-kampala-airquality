@@ -29,12 +29,17 @@ M = args.num_inducing
 
 results_dir = f'sparseGP_M={M}'
 site_mses = {}
+site_vars = {}
 
 for root, dirs, _ in os.walk(results_dir):
     for dir in dirs:
         # for filename in os.listdir(dir):
         f = open(os.path.join(root, dir + "/mse.txt"), "r")
         site_mses[dir] = float(f.read().strip())
+
+        f = open(os.path.join(root, dir + "/variance.txt"), "r")
+        site_vars[dir] = float(f.read().strip())
+
 
 output_folder = f'sparseGP_M={M}/'
 os.makedirs(output_folder, exist_ok = True)
@@ -49,6 +54,9 @@ with open(output_folder + '/site_rmses.csv', 'w') as fp:
     # for key, value in site_mses.items():
     #    writer.writerow([key, value])
     # [fp.write('{0},{1}\n'.format(key, value)) for key, value in site_mses.items()]
+with open(output_folder + '/site_vars.csv', 'w') as fp:
+    writer = csv.writer(fp)
+    writer.writerows(site_vars.items())
 
 
 # with open(output_folder + '/site_rmses', 'rb') as fp:
