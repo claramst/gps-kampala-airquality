@@ -16,21 +16,8 @@ import tensorflow as tf
 tf.config.threading.set_inter_op_parallelism_threads(1)
 tf.config.threading.set_intra_op_parallelism_threads(1)
 
-nov_df = pd.read_csv('nov-data.csv')
+df = pd.read_csv('nov-data.csv')
 weather_df = pd.read_csv('weather-data.csv')
-
-nov_df_no_outliers = pd.DataFrame()
-
-for site in nov_df.site_id.unique():
-  site_df = nov_df[nov_df['site_id']==site]
-  Q1 = site_df['pm2_5_calibrated_value'].quantile(0.25)
-  Q3 = site_df['pm2_5_calibrated_value'].quantile(0.75)
-  IQR = Q3 - Q1
-  final_df = site_df[~((site_df['pm2_5_calibrated_value']<(Q1-1.5*IQR)) | (site_df['pm2_5_calibrated_value']>(Q3+1.5*IQR)))]
-  nov_df_no_outliers = pd.concat([nov_df_no_outliers, final_df], ignore_index=True)
-
-df_no_outliers = nov_df_no_outliers
-df = nov_df
 
 sites = df.site_id.unique()
 print("Number of sites:")
@@ -68,53 +55,42 @@ weather_df = weather_df.set_index('datetime').tz_localize('Africa/Kampala').tz_c
 df = df.merge(weather_df, left_on='timestamp', right_on='datetime')
 df = df.drop(['windgust', 'datetime'], axis=1)
 
-max_calibrated_pm2_5 = df['pm2_5_calibrated_value'].max(axis=0)
-min_calibrated_pm2_5 = df['pm2_5_calibrated_value'].min(axis=0)
-max_raw_pm2_5 = df['pm2_5_raw_value'].max(axis=0)
-min_raw_pm2_5 = df['pm2_5_raw_value'].min(axis=0)
-max_latitude = df['latitude'].max(axis=0)
-min_latitude = df['latitude'].min(axis=0)
-max_longitude = df['longitude'].max(axis=0)
-min_longitude = df['longitude'].min(axis=0)
+df_no_outliers = pd.DataFrame()
 
-mean_calibrated_pm2_5 = df['pm2_5_calibrated_value'].mean(axis=0)
-std_calibrated_pm2_5 = df['pm2_5_calibrated_value'].std(axis=0)
-mean_raw_pm2_5 = df['pm2_5_raw_value'].mean(axis=0)
-std_raw_pm2_5 = df['pm2_5_raw_value'].std(axis=0)
-mean_latitude = df['latitude'].mean(axis=0)
-std_latitude = df['latitude'].std(axis=0)
-mean_longitude = df['longitude'].mean(axis=0)
-std_longitude = df['longitude'].std(axis=0)
-
-# mean_wind_speed = df['wind_speed'].mean(axis=0)
-# std_wind_speed = df['wind_speed'].std(axis=0)
-# mean_wind_direction = df['wind_direction'].mean(axis=0)
-# std_wind_direction = df['wind_direction'].std(axis=0)
-# mean_wind_gusts = df['wind_gusts'].mean(axis=0)
-# std_wind_gusts = df['wind_gusts'].std(axis=0)
-# mean_temperature = df['temperature'].mean(axis=0)
-# std_temperature = df['temperature'].std(axis=0)
-# mean_precipitation = df['precipitation'].mean(axis=0)
-# std_precipitation = df['precipitation'].std(axis=0)
-# mean_humidity = df['humidity'].mean(axis=0)
-# std_humidity = df['humidity'].std(axis=0)
-mean_wind_speed = df['windspeed'].mean(axis=0)
-std_wind_speed = df['windspeed'].std(axis=0)
-mean_wind_direction = df['winddir'].mean(axis=0)
-std_wind_direction = df['winddir'].std(axis=0)
-mean_temperature = df['temp'].mean(axis=0)
-std_temperature = df['temp'].std(axis=0)
-mean_precipitation = df['precip'].mean(axis=0)
-std_precipitation = df['precip'].std(axis=0)
-mean_humidity = df['humidity'].mean(axis=0)
-std_humidity = df['humidity'].std(axis=0)
-mean_cloud_cover = df['cloudcover'].mean(axis=0)
-std_cloud_cover = df['cloudcover'].std(axis=0)
+for site in df.site_id.unique():
+  site_df = df[df['site_id']==site]
+  Q1 = site_df['pm2_5_calibrated_value'].quantile(0.25)
+  Q3 = site_df['pm2_5_calibrated_value'].quantile(0.75)
+  IQR = Q3 - Q1
+  final_df = site_df[~((site_df['pm2_5_calibrated_value']<(Q1-1.5*IQR)) | (site_df['pm2_5_calibrated_value']>(Q3+1.5*IQR)))]
+  df_no_outliers = pd.concat([df_no_outliers, final_df], ignore_index=True)
 
 def train_test_gp(df, site_id, kernel, input_features):
     mses = np.zeros((4))
     test = df[df['site_id']==site_id]
     train = df_no_outliers[df_no_outliers['site_id'] != site_id]
+
+    mean_calibrated_pm2_5 = train['pm2_5_calibrated_value'].mean(axis=0)
+    std_calibrated_pm2_5 = train['pm2_5_calibrated_value'].std(axis=0)
+    mean_raw_pm2_5 = train['pm2_5_raw_value'].mean(axis=0)
+    std_raw_pm2_5 = train['pm2_5_raw_value'].std(axis=0)
+    mean_latitude = train['latitude'].mean(axis=0)
+    std_latitude = train['latitude'].std(axis=0)
+    mean_longitude = train['longitude'].mean(axis=0)
+    std_longitude = train['longitude'].std(axis=0)
+
+    mean_wind_speed = train['windspeed'].mean(axis=0)
+    std_wind_speed = train['windspeed'].std(axis=0)
+    mean_wind_direction = train['winddir'].mean(axis=0)
+    std_wind_direction = train['winddir'].std(axis=0)
+    mean_temperature = train['temp'].mean(axis=0)
+    std_temperature = train['temp'].std(axis=0)
+    mean_precipitation = train['precip'].mean(axis=0)
+    std_precipitation = train['precip'].std(axis=0)
+    mean_humidity = train['humidity'].mean(axis=0)
+    std_humidity = train['humidity'].std(axis=0)
+    mean_cloud_cover = train['cloudcover'].mean(axis=0)
+    std_cloud_cover = train['cloudcover'].std(axis=0)
 
     for i in range(4):
         if len(test) == 0:

@@ -55,24 +55,6 @@ weather_df = weather_df.set_index('datetime').tz_localize('Africa/Kampala').tz_c
 df = df.merge(weather_df, left_on='timestamp', right_on='datetime')
 df = df.drop(['windgust', 'datetime'], axis=1)
 
-max_calibrated_pm2_5 = df['pm2_5_calibrated_value'].max(axis=0)
-min_calibrated_pm2_5 = df['pm2_5_calibrated_value'].min(axis=0)
-max_raw_pm2_5 = df['pm2_5_raw_value'].max(axis=0)
-min_raw_pm2_5 = df['pm2_5_raw_value'].min(axis=0)
-max_latitude = df['latitude'].max(axis=0)
-min_latitude = df['latitude'].min(axis=0)
-max_longitude = df['longitude'].max(axis=0)
-min_longitude = df['longitude'].min(axis=0)
-
-mean_calibrated_pm2_5 = df['pm2_5_calibrated_value'].mean(axis=0)
-std_calibrated_pm2_5 = df['pm2_5_calibrated_value'].std(axis=0)
-mean_raw_pm2_5 = df['pm2_5_raw_value'].mean(axis=0)
-std_raw_pm2_5 = df['pm2_5_raw_value'].std(axis=0)
-mean_latitude = df['latitude'].mean(axis=0)
-std_latitude = df['latitude'].std(axis=0)
-mean_longitude = df['longitude'].mean(axis=0)
-std_longitude = df['longitude'].std(axis=0)
-#
 # mean_wind_speed = df['wind_speed'].mean(axis=0)
 # std_wind_speed = df['wind_speed'].std(axis=0)
 # mean_wind_direction = df['wind_direction'].mean(axis=0)
@@ -86,25 +68,11 @@ std_longitude = df['longitude'].std(axis=0)
 # mean_humidity = df['humidity'].mean(axis=0)
 # std_humidity = df['humidity'].std(axis=0)
 
-mean_wind_speed = df['windspeed'].mean(axis=0)
-std_wind_speed = df['windspeed'].std(axis=0)
-mean_wind_direction = df['winddir'].mean(axis=0)
-std_wind_direction = df['winddir'].std(axis=0)
-mean_temperature = df['temp'].mean(axis=0)
-std_temperature = df['temp'].std(axis=0)
-mean_precipitation = df['precip'].mean(axis=0)
-std_precipitation = df['precip'].std(axis=0)
-mean_humidity = df['humidity'].mean(axis=0)
-std_humidity = df['humidity'].std(axis=0)
-mean_cloud_cover = df['cloudcover'].mean(axis=0)
-std_cloud_cover = df['cloudcover'].std(axis=0)
-
 last_day = df[df['Day'].astype(str)=='2021-11-30']
 print(last_day.site_id.unique().shape)
 
 last_hour = last_day[last_day['IndexTime']==23]
 print(last_hour.site_id.unique().shape)
-
 
 train = df.drop(last_day.index)
 train_no_outliers = pd.DataFrame()
@@ -118,6 +86,28 @@ for site in train.site_id.unique():
     train_no_outliers = pd.concat([train_no_outliers, final_df], ignore_index=True)
 
 train = train_no_outliers
+
+mean_calibrated_pm2_5 = train['pm2_5_calibrated_value'].mean(axis=0)
+std_calibrated_pm2_5 = train['pm2_5_calibrated_value'].std(axis=0)
+mean_raw_pm2_5 = train['pm2_5_raw_value'].mean(axis=0)
+std_raw_pm2_5 = train['pm2_5_raw_value'].std(axis=0)
+mean_latitude = train['latitude'].mean(axis=0)
+std_latitude = train['latitude'].std(axis=0)
+mean_longitude = train['longitude'].mean(axis=0)
+std_longitude = train['longitude'].std(axis=0)
+
+mean_wind_speed = train['windspeed'].mean(axis=0)
+std_wind_speed = train['windspeed'].std(axis=0)
+mean_wind_direction = train['winddir'].mean(axis=0)
+std_wind_direction = train['winddir'].std(axis=0)
+mean_temperature = train['temp'].mean(axis=0)
+std_temperature = train['temp'].std(axis=0)
+mean_precipitation = train['precip'].mean(axis=0)
+std_precipitation = train['precip'].std(axis=0)
+mean_humidity = train['humidity'].mean(axis=0)
+std_humidity = train['humidity'].std(axis=0)
+mean_cloud_cover = train['cloudcover'].mean(axis=0)
+std_cloud_cover = train['cloudcover'].std(axis=0)
 
 def train_test_forecast_hour_gp(df, site_id, kernel, input_features):
     test = df.loc[last_day.index]

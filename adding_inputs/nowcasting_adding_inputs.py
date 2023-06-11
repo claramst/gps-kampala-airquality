@@ -32,21 +32,8 @@ tf.config.threading.set_intra_op_parallelism_threads(1)
 # add_precipitation = args.precipitation
 # add_temperature = args.temperature
 
-nov_df = pd.read_csv('nov-data.csv')
+df = pd.read_csv('nov-data.csv')
 weather_df = pd.read_csv('weather-data.csv')
-
-nov_df_no_outliers = pd.DataFrame()
-
-for site in nov_df.site_id.unique():
-  site_df = nov_df[nov_df['site_id']==site]
-  Q1 = site_df['pm2_5_calibrated_value'].quantile(0.25)
-  Q3 = site_df['pm2_5_calibrated_value'].quantile(0.75)
-  IQR = Q3 - Q1
-  final_df = site_df[~((site_df['pm2_5_calibrated_value']<(Q1-1.5*IQR)) | (site_df['pm2_5_calibrated_value']>(Q3+1.5*IQR)))]
-  nov_df_no_outliers = pd.concat([nov_df_no_outliers, final_df], ignore_index=True)
-
-df_no_outliers = nov_df_no_outliers
-df = nov_df
 
 sites = df.site_id.unique()
 print("Number of sites:")
@@ -84,6 +71,16 @@ weather_df = weather_df.set_index('datetime').tz_localize('Africa/Kampala').tz_c
 
 df = df.merge(weather_df, left_on='timestamp', right_on='datetime')
 df = df.drop(['windgust', 'datetime'], axis=1)
+
+df_no_outliers = pd.DataFrame()
+
+for site in df.site_id.unique():
+  site_df = df[df['site_id']==site]
+  Q1 = site_df['pm2_5_calibrated_value'].quantile(0.25)
+  Q3 = site_df['pm2_5_calibrated_value'].quantile(0.75)
+  IQR = Q3 - Q1
+  final_df = site_df[~((site_df['pm2_5_calibrated_value']<(Q1-1.5*IQR)) | (site_df['pm2_5_calibrated_value']>(Q3+1.5*IQR)))]
+  df_no_outliers = pd.concat([df_no_outliers, final_df], ignore_index=True)
 
 max_calibrated_pm2_5 = df['pm2_5_calibrated_value'].max(axis=0)
 min_calibrated_pm2_5 = df['pm2_5_calibrated_value'].min(axis=0)

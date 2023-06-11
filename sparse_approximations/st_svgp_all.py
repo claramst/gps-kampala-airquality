@@ -23,17 +23,10 @@ for site in df.site_id.unique():
   df_no_outliers = pd.concat([df_no_outliers, final_df], ignore_index=True)
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--site_index', type=int, default=0, help='selects site')
 parser.add_argument('--num_inducing', type=int, default=50, help='number of inducing points')
-parser.add_argument('--forecasting', action='store_true', help='forecasting model')
 
 args = parser.parse_args()
-site_index = args.site_index
 M = args.num_inducing
-forecasting = args.forecasting
-
-sites = df.site_id.unique()
-test_site = sites[site_index]
 
 def datetime_to_epoch(datetime):
     """
@@ -121,32 +114,18 @@ Y = Y[unique_idx, :]
 # For the filtering methods to work we need a full spatio-temporal grid
 X_raw, Y_raw = pad_with_nan_to_make_grid(X.copy(), Y.copy())
 
-if forecasting:
-    last_day = df[df['timestamp'].astype(str).str.startswith('2021-11-30')]
-    test = df.loc[last_day.index]
-    test = test[test['site_id'] == test_site]
-    train = df_no_outliers[df_no_outliers['timestamp'].astype(str).str.startswith('2021-11-30')]
-    if len(test) == 0:
-        sys.exit("Site has no readings at forecast test time")
+last_day = df[df['timestamp'].astype(str).str.startswith('2021-11-30')]
+test = df.loc[last_day.index]
+train = df_no_outliers[df_no_outliers['timestamp'].astype(str).str.startswith('2021-11-30')]
+if len(test) == 0:
+    sys.exit("Site has no readings at forecast test time")
 
-    start_epoch = last_day['epoch'].min()
-    end_epoch = last_day['epoch'].max()
+start_epoch = last_day['epoch'].min()
+end_epoch = last_day['epoch'].max()
 
-    test_latitude = test.latitude.unique()[0]
-    test_longitude = test.longitude.unique()[0]
 
-    test_indices = ((X_raw[:,2]==test_longitude) & (X_raw[:,1]==test_latitude) & (X_raw[:,0]>=start_epoch) & (X_raw[:,0]<=end_epoch)).nonzero()
-    train_indices = ((X_raw[:,0]<start_epoch) | (X_raw[:,0]>end_epoch)).nonzero()
-
-else:
-    test = df[df['site_id']==test_site]
-    train = df_no_outliers[df_no_outliers['site_id'] != test_site]
-
-    test_latitude = test.latitude.unique()[0]
-    test_longitude = test.longitude.unique()[0]
-
-    test_indices = ((X_raw[:,2]==test_longitude) & (X_raw[:,1]==test_latitude)).nonzero()
-    train_indices = ((X_raw[:,2]!=test_longitude) | (X_raw[:,1]!=test_latitude)).nonzero()
+test_indices = ((X_raw[:,0]>=start_epoch) & (X_raw[:,0]<=end_epoch)).nonzero()
+train_indices = ((X_raw[:,0]<start_epoch) | (X_raw[:,0]>end_epoch)).nonzero()
 
 X_train, Y_train = X_raw.copy(), Y_raw.copy()
 Y_train[test_indices, :] = np.nan #to keep grid structure in X we just mask the testing data in the training set
@@ -265,13 +244,9 @@ rmse = np.sqrt(np.nanmean((np.squeeze(Y_t) - np.squeeze(posterior_mean))**2))
 print('nlpd: %2.3f' % nlpd)
 print('rmse: %2.3f' % rmse)
 
-print(test_site)
 print(rmse)
 
 avg_uncertainty = np.average(posterior_var)
-
-site_id_formatted = test_site.replace(" ", "")
-site_id_formatted = test_site.replace("/", "")
 
 folder_outputs = f'st_svgp_M={M}/' + site_id_formatted + '/'
 
@@ -288,4 +263,5 @@ np.savetxt(folder_outputs + sub_folder + '/avg_uncertainty.txt', np.array([avg_u
 np.savetxt(folder_outputs + sub_folder + '/learned_inducing_points.txt', np.array(kern.z))
 np.savetxt(folder_outputs + sub_folder + '/total_time_taken.txt', np.array([total_time_taken]))
 np.savetxt(folder_outputs + sub_folder + '/posterior_mean.txt', np.array(posterior_mean))
+np.savetxt(folder_outputs + sub_folder + '/posterior_var.txt', np.array(posterior_var))
 np.savetxt(folder_outputs + sub_folder + '/test_ys.txt', np.array(np.squeeze(Y_t)))

@@ -57,19 +57,19 @@ add_times_to_df(df)
 add_times_to_df(df_no_outliers)
 df = df[['Day', 'Time', 'IndexTime', 'IndexDay', 'timestamp', 'pm2_5_calibrated_value', 'pm2_5_raw_value', 'latitude', 'longitude', 'site_id']]
 
-mean_calibrated_pm2_5 = df['pm2_5_calibrated_value'].mean(axis=0)
-std_calibrated_pm2_5 = df['pm2_5_calibrated_value'].std(axis=0)
-mean_raw_pm2_5 = df['pm2_5_raw_value'].mean(axis=0)
-std_raw_pm2_5 = df['pm2_5_raw_value'].std(axis=0)
-mean_latitude = df['latitude'].mean(axis=0)
-std_latitude = df['latitude'].std(axis=0)
-mean_longitude = df['longitude'].mean(axis=0)
-std_longitude = df['longitude'].std(axis=0)
-
 def train_test_gp(df, site_id, kernel):
     mses = np.zeros((4))
     test = df[df['site_id']==site_id]
     train = df_no_outliers[df_no_outliers['site_id'] != site_id]
+
+    mean_calibrated_pm2_5 = train['pm2_5_calibrated_value'].mean(axis=0)
+    std_calibrated_pm2_5 = train['pm2_5_calibrated_value'].std(axis=0)
+    mean_raw_pm2_5 = train['pm2_5_raw_value'].mean(axis=0)
+    std_raw_pm2_5 = train['pm2_5_raw_value'].std(axis=0)
+    mean_latitude = train['latitude'].mean(axis=0)
+    std_latitude = train['latitude'].std(axis=0)
+    mean_longitude = train['longitude'].mean(axis=0)
+    std_longitude = train['longitude'].std(axis=0)
 
     for i in range(4):
 
