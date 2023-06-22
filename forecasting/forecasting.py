@@ -116,10 +116,11 @@ def train_test_forecast_gp(df, site_id, kernel):
       mses[i] = mse
     return np.average(mses)
 
-rbf_kernel = gpflow.kernels.SquaredExponential(lengthscales=[0.14, 0.04, 0.2, 0.2])
+# rbf_kernel = gpflow.kernels.SquaredExponential(lengthscales=[0.14, 0.167, 0.2, 0.2])
+rbf_kernel = gpflow.kernels.SquaredExponential(lengthscales=[0.14, 0.167, 0.2, 0.2])
 
 day_period = gpflow.kernels.Periodic(gpflow.kernels.SquaredExponential(active_dims=[0], lengthscales=[0.14]), period=7)
-hour_period = gpflow.kernels.Periodic(gpflow.kernels.SquaredExponential(active_dims=[1], lengthscales=[0.04]), period=24)
+hour_period = gpflow.kernels.Periodic(gpflow.kernels.SquaredExponential(active_dims=[1], lengthscales=[0.167]), period=24)
 
 rbf1 = gpflow.kernels.SquaredExponential(active_dims=[2], lengthscales=[0.2])
 rbf2 = gpflow.kernels.SquaredExponential(active_dims=[3], lengthscales=[0.2])
@@ -135,8 +136,10 @@ else:
 
 mses = np.zeros(len(sites))
 for i in range(0, len(sites)):
+    print(sites[i])
     mse = train_test_forecast_gp(df, sites[i], kernel)
     mses[i] = mse
+    print(mse)
 
 mses = mses[mses != 0]
 

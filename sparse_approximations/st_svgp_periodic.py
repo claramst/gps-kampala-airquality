@@ -1,4 +1,5 @@
 import bayesnewton
+import jax.numpy as jnp
 import objax
 import numpy as np
 import time
@@ -9,6 +10,16 @@ import argparse
 import os
 
 from jax.lib import xla_bridge
+
+## Our attempts to make a periodic kernel for the ST-SVGP model
+
+"""#### CPU cores """
+os.environ["OMP_NUM_THREADS"] = "8"
+
+import tensorflow as tf
+
+tf.config.threading.set_inter_op_parallelism_threads(1)
+tf.config.threading.set_intra_op_parallelism_threads(1)
 
 df = pd.read_csv('nov-data.csv')
 
@@ -21,6 +32,7 @@ for site in df.site_id.unique():
   IQR = Q3 - Q1
   outlier_df = site_df[((site_df['pm2_5_calibrated_value']<(Q1-1.5*IQR)) | (site_df['pm2_5_calibrated_value']>(Q3+1.5*IQR)))]
   df_outliers = pd.concat([df_outliers, outlier_df], ignore_index=True)
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--site_index', type=int, default=0, help='selects site')
@@ -35,6 +47,9 @@ forecasting = args.forecasting
 sites = df.site_id.unique()
 test_site = sites[site_index]
 
+print(site_index)
+print(sites)
+print(test_site)
 
 def datetime_to_epoch(datetime):
     """
@@ -99,13 +114,13 @@ def pad_with_nan_to_make_grid(X, Y):
 
     return X_grid[idx], Y_grid[idx]
 
-
 df['timestamp'] = pd.to_datetime(df['timestamp'])
 df = df[['timestamp', 'pm2_5_calibrated_value', 'site_id', 'site_name', 'latitude', 'longitude']]
 df['epoch'] = datetime_to_epoch(df['timestamp'])
 
 df_outliers['timestamp'] = pd.to_datetime(df_outliers['timestamp'])
 df_outliers = df_outliers[['timestamp', 'pm2_5_calibrated_value', 'site_id', 'site_name', 'latitude', 'longitude']]
+
 df_outliers['epoch'] = datetime_to_epoch(df_outliers['timestamp'])
 
 X = df[['epoch', 'latitude', 'longitude']].astype('float').to_numpy()
@@ -132,7 +147,6 @@ if forecasting:
     test_latitude = test.latitude.unique()[0]
     test_longitude = test.longitude.unique()[0]
 
-    # # test_indices = ((X_raw[:,0]>=start_epoch) & (X_raw[:,0]<=end_epoch)).nonzero()
     X_raw_tuples = set(map(tuple, X_raw))
     df_outliers_tuples = set(map(tuple, df_outliers[['epoch', 'latitude', 'longitude']].to_numpy()))
     # Create an array of the same length as X_raw, with True where a row is an outlier and False elsewhere
@@ -153,13 +167,17 @@ if forecasting:
 
 else:
     test = df[df['site_id']==test_site]
+    # train = df_no_outliers[df_no_outliers['site_id'] != test_site]
+    #
     test_latitude = test.latitude.unique()[0]
     test_longitude = test.longitude.unique()[0]
 
+    # test_indices = ((X_raw[:,2]==test_longitude) & (X_raw[:,1]==test_latitude)).nonzero()
 
     X_raw_tuples = set(map(tuple, X_raw))
     df_outliers_tuples = set(map(tuple, df_outliers[['epoch', 'latitude', 'longitude']].to_numpy()))
     outliers_mask = np.array([x in df_outliers_tuples for x in X_raw_tuples])
+    site_mask = (X_raw[:,2]!=test_longitude) | (X_raw[:,1]!=test_latitude).nonzero()
     test_site_mask = (X_raw[:,2]==test_longitude) & (X_raw[:,1]==test_latitude)
 
     train_mask = (outliers_mask | test_site_mask).nonzero()
@@ -173,7 +191,6 @@ else:
     # We want to mask all readings not at test_site, but not mask outliers
     Y_test[test_mask, :] = np.nan
 
-
 X_all = X_raw
 Y_all = Y_raw
 
@@ -186,7 +203,16 @@ Y = Y_train
 X_t = X_test_norm
 Y_t = Y_test
 
-num_z_space = M
+class Periodic(bayesnewton.kernels.QuasiPeriodicMatern12):
+  def K(self, X, X2):
+    r_per = jnp.pi * jnp.sqrt(jnp.maximum(bayesnewton.utils.square_distance(X, X2), 1e-36)) / self.period
+    k_per = jnp.exp(-0.5 * jnp.square(jnp.sin(r_per) / self.lengthscale_periodic))
+    r_mat = jnp.sqrt(jnp.maximum(bayesnewton.utils.scaled_squared_euclid_dist(X, X2, self.lengthscale_matern), 1e-36))
+    k_mat12 = jnp.exp(-r_mat)
+    return self.variance * k_mat12 * k_per
+
+
+num_z_space = 20
 
 grid = True
 print(Y.shape)
@@ -211,7 +237,7 @@ print("num data points =", N)
 
 var_y = 5.
 var_f = 1.
-len_time = 10
+len_time = 0.001
 # len_time = 1
 len_space = 0.2
 
@@ -223,8 +249,8 @@ if sparse:
 else:
     z = R[0, ...]
 
-
-kern_time = bayesnewton.kernels.Matern32(variance=var_f, lengthscale=len_time)
+period = 0.11547016520966591
+kern_time = Periodic(variance=var_f, lengthscale_periodic=len_time, period = period)
 kern_space0 = bayesnewton.kernels.Matern32(variance=var_f, lengthscale=len_space)
 kern_space1 = bayesnewton.kernels.Matern32(variance=var_f, lengthscale=len_space)
 kern_space = bayesnewton.kernels.Separable([kern_space0, kern_space1])

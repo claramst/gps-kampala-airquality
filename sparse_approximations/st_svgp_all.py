@@ -10,17 +10,19 @@ import os
 
 from jax.lib import xla_bridge
 
+# Training on all sites and testing forecasting on all sites as a whole
+
 df = pd.read_csv('nov-data.csv')
 
-df_no_outliers = pd.DataFrame()
+df_outliers = pd.DataFrame()
 
 for site in df.site_id.unique():
   site_df = df[df['site_id']==site]
   Q1 = site_df['pm2_5_calibrated_value'].quantile(0.25)
   Q3 = site_df['pm2_5_calibrated_value'].quantile(0.75)
   IQR = Q3 - Q1
-  final_df = site_df[~((site_df['pm2_5_calibrated_value']<(Q1-1.5*IQR)) | (site_df['pm2_5_calibrated_value']>(Q3+1.5*IQR)))]
-  df_no_outliers = pd.concat([df_no_outliers, final_df], ignore_index=True)
+  outlier_df = site_df[((site_df['pm2_5_calibrated_value']<(Q1-1.5*IQR)) | (site_df['pm2_5_calibrated_value']>(Q3+1.5*IQR)))]
+  df_outliers = pd.concat([df_outliers, outlier_df], ignore_index=True)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--num_inducing', type=int, default=50, help='number of inducing points')
@@ -91,17 +93,13 @@ def pad_with_nan_to_make_grid(X, Y):
 
     return X_grid[idx], Y_grid[idx]
 
-weather_df = pd.read_csv('weather-data.csv')
-weather_df['datetime'] = pd.to_datetime(weather_df['datetime'], utc=True)
-weather_df = weather_df[['datetime', 'temp', 'dew', 'humidity', 'precip', 'cloudcover', 'windgust', 'windspeed', 'winddir']]
-
 df['timestamp'] = pd.to_datetime(df['timestamp'])
 df = df[['timestamp', 'pm2_5_calibrated_value', 'site_id', 'site_name', 'latitude', 'longitude']]
-
 df['epoch'] = datetime_to_epoch(df['timestamp'])
 
-df = df.merge(weather_df, left_on='timestamp', right_on='datetime')
-df = df.drop(['windgust', 'datetime'], axis=1)
+df_outliers['timestamp'] = pd.to_datetime(df_outliers['timestamp'])
+df_outliers = df_outliers[['timestamp', 'pm2_5_calibrated_value', 'site_id', 'site_name', 'latitude', 'longitude']]
+df_outliers['epoch'] = datetime_to_epoch(df_outliers['timestamp'])
 
 X = df[['epoch', 'latitude', 'longitude']].astype('float').to_numpy()
 Y = df[['pm2_5_calibrated_value']].to_numpy()
@@ -115,23 +113,38 @@ Y = Y[unique_idx, :]
 X_raw, Y_raw = pad_with_nan_to_make_grid(X.copy(), Y.copy())
 
 last_day = df[df['timestamp'].astype(str).str.startswith('2021-11-30')]
-test = df.loc[last_day.index]
-train = df_no_outliers[df_no_outliers['timestamp'].astype(str).str.startswith('2021-11-30')]
-if len(test) == 0:
-    sys.exit("Site has no readings at forecast test time")
 
 start_epoch = last_day['epoch'].min()
 end_epoch = last_day['epoch'].max()
 
 
-test_indices = ((X_raw[:,0]>=start_epoch) & (X_raw[:,0]<=end_epoch)).nonzero()
-train_indices = ((X_raw[:,0]<start_epoch) | (X_raw[:,0]>end_epoch)).nonzero()
+# test_indices = ((X_raw[:,0]>=start_epoch) & (X_raw[:,0]<=end_epoch)).nonzero()
+# train_indices = ((X_raw[:,0]<start_epoch) | (X_raw[:,0]>end_epoch)).nonzero()
+#
+# X_train, Y_train = X_raw.copy(), Y_raw.copy()
+# Y_train[test_indices, :] = np.nan #to keep grid structure in X we just mask the testing data in the training set
+#
+# X_test, Y_test = X_raw.copy(), Y_raw.copy()
+# Y_test[train_indices, :] = np.nan
+
+
+X_raw_tuples = set(map(tuple, X_raw))
+df_outliers_tuples = set(map(tuple, df_outliers[['epoch', 'latitude', 'longitude']].to_numpy()))
+# Create an array of the same length as X_raw, with True where a row is an outlier and False elsewhere
+outliers_mask = np.array([x in df_outliers_tuples for x in X_raw_tuples])
+last_day_mask = (X_raw[:,0]>=start_epoch) & (X_raw[:,0]<=end_epoch)
+# Masks outliers and the last day. We want to remove these from train set
+train_mask = (outliers_mask | last_day_mask).nonzero()
+
+# Masks the last day. Should be length 47530 - 24*66
+test_mask = ((X_raw[:,0]<start_epoch) | (X_raw[:,0]>end_epoch)).nonzero()
 
 X_train, Y_train = X_raw.copy(), Y_raw.copy()
-Y_train[test_indices, :] = np.nan #to keep grid structure in X we just mask the testing data in the training set
+Y_train[train_mask, :] = np.nan #to keep grid structure in X we just mask the testing data in the training set
+# We want to mask last day, and outliers
 
 X_test, Y_test = X_raw.copy(), Y_raw.copy()
-Y_test[train_indices, :] = np.nan
+Y_test[test_mask, :] = np.nan
 
 X_all = X_raw
 Y_all = Y_raw
@@ -170,7 +183,7 @@ print("num data points =", N)
 
 var_y = 5.
 var_f = 1.
-len_time = 0.001
+len_time = 0.1
 # len_time = 1
 len_space = 0.2
 
@@ -229,7 +242,7 @@ train_op = objax.Jit(train_op)
 t0 = time.time()
 for i in range(1, iters + 1):
     loss = train_op()
-    print('iter %2d: energy: %1.4f' % (i, loss[0]))
+    # print('iter %2d: energy: %1.4f' % (i, loss[0]))
 t1 = time.time()
 # print('optimisation time: %2.2f secs' % (t1-t0))
 avg_time_taken = (t1-t0)/iters
@@ -248,12 +261,8 @@ print(rmse)
 
 avg_uncertainty = np.average(posterior_var)
 
-folder_outputs = f'st_svgp_M={M}/' + site_id_formatted + '/'
-
-if forecasting:
-    sub_folder = 'forecasting_results'
-else:
-    sub_folder = 'nowcasting_results'
+folder_outputs = f'st_svgp_M={M}/'
+sub_folder = 'all_sites'
 
 os.makedirs(folder_outputs, exist_ok = True)
 os.makedirs(folder_outputs + sub_folder, exist_ok = True)
@@ -265,3 +274,5 @@ np.savetxt(folder_outputs + sub_folder + '/total_time_taken.txt', np.array([tota
 np.savetxt(folder_outputs + sub_folder + '/posterior_mean.txt', np.array(posterior_mean))
 np.savetxt(folder_outputs + sub_folder + '/posterior_var.txt', np.array(posterior_var))
 np.savetxt(folder_outputs + sub_folder + '/test_ys.txt', np.array(np.squeeze(Y_t)))
+np.savetxt(folder_outputs + sub_folder + '/learned_time_l', np.array([kern.temporal_lengthscale]))
+np.savetxt(folder_outputs + sub_folder + '/learned_space_l', np.array([kern.spatial_lengthscale]))

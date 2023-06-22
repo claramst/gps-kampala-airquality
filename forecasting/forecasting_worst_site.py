@@ -16,28 +16,26 @@ import tensorflow as tf
 tf.config.threading.set_inter_op_parallelism_threads(1)
 tf.config.threading.set_intra_op_parallelism_threads(1)
 
-nov_df = pd.read_csv('nov-data.csv')
+df = pd.read_csv('nov-data.csv')
 
-nov_df_no_outliers = pd.DataFrame()
-
-for site in nov_df.site_id.unique():
-  site_df = nov_df[nov_df['site_id']==site]
-  Q1 = site_df['pm2_5_calibrated_value'].quantile(0.25)
-  Q3 = site_df['pm2_5_calibrated_value'].quantile(0.75)
-  IQR = Q3 - Q1
-  final_df = site_df[~((site_df['pm2_5_calibrated_value']<(Q1-1.5*IQR)) | (site_df['pm2_5_calibrated_value']>(Q3+1.5*IQR)))]
-  nov_df_no_outliers = pd.concat([nov_df_no_outliers, final_df], ignore_index=True)
-
-df_no_outliers = nov_df_no_outliers
-df = nov_df
+parser = argparse.ArgumentParser()
+parser.add_argument('--rbf', action='store_true', help='use rbf kernel')
+args = parser.parse_args()
+rbf = args.rbf
 
 sites = df.site_id.unique()
-print("Number of sites:")
 print(sites.shape)
-
-print("Shape of data frame:")
 print(df.shape)
 
+parent_folder = 'forecasting/60d2b5fd7e9018a1a8d38c1d/'
+if rbf:
+    sub_folder = 'rbf_results/'
+else:
+    sub_folder = 'periodic_results/'
+
+output_folder = parent_folder + sub_folder
+os.makedirs(parent_folder, exist_ok = True)
+os.makedirs(output_folder, exist_ok = True)
 
 def add_times_to_df(df):
     strtime_to_idx = {f"{idx:02d}:00": idx for idx in range(24)}
@@ -54,24 +52,36 @@ def add_times_to_df(df):
         df.insert(3, 'IndexDay', df['Day'].dt.weekday)
 
 add_times_to_df(df)
-add_times_to_df(df_no_outliers)
 df = df[['Day', 'Time', 'IndexTime', 'IndexDay', 'timestamp', 'pm2_5_calibrated_value', 'pm2_5_raw_value', 'latitude', 'longitude', 'site_id']]
 
-def train_test_gp(df, site_id, kernel):
-    mses = np.zeros((4))
-    test = df[df['site_id']==site_id]
-    train = df_no_outliers[df_no_outliers['site_id'] != site_id]
+print("Number of sites for last day")
+last_day = df[df['Day'].astype(str)=='2021-11-30']
+print(last_day.site_id.unique().shape)
 
-    mean_calibrated_pm2_5 = train['pm2_5_calibrated_value'].mean(axis=0)
-    std_calibrated_pm2_5 = train['pm2_5_calibrated_value'].std(axis=0)
-    mean_raw_pm2_5 = train['pm2_5_raw_value'].mean(axis=0)
-    std_raw_pm2_5 = train['pm2_5_raw_value'].std(axis=0)
-    mean_latitude = train['latitude'].mean(axis=0)
-    std_latitude = train['latitude'].std(axis=0)
-    mean_longitude = train['longitude'].mean(axis=0)
-    std_longitude = train['longitude'].std(axis=0)
+print("Number of sites for last hour")
+last_hour = last_day[last_day['IndexTime']==23]
+print(last_hour.site_id.unique().shape)
+
+# train = df.drop(last_hour.index)
+train = df.drop(last_day.index)
+
+mean_calibrated_pm2_5 = train['pm2_5_calibrated_value'].mean(axis=0)
+std_calibrated_pm2_5 = train['pm2_5_calibrated_value'].std(axis=0)
+mean_raw_pm2_5 = train['pm2_5_raw_value'].mean(axis=0)
+std_raw_pm2_5 = train['pm2_5_raw_value'].std(axis=0)
+mean_latitude = train['latitude'].mean(axis=0)
+std_latitude = train['latitude'].std(axis=0)
+mean_longitude = train['longitude'].mean(axis=0)
+std_longitude = train['longitude'].std(axis=0)
+
+def train_test_forecast_gp(df, site_id, kernel):
+    test = df.loc[last_day.index]
+    test = test[test['site_id'] == site_id]
+    mses = np.zeros(4)
 
     for i in range(4):
+      if len(test) == 0:
+        return 0
 
       if len(train) > 1000:
           rand_train = train.sample(n=1000, random_state=i)
@@ -110,9 +120,23 @@ def train_test_gp(df, site_id, kernel):
       y_mean, y_var = model.predict_y(testX_normalised)
       y_mean_unnormalised = (y_mean * (std_calibrated_pm2_5)) + mean_calibrated_pm2_5
 
+      test_copy = test[['IndexDay', 'IndexTime', 'latitude', 'longitude']]
+      test_copy['predicted_pm_2_5'] = y_mean_unnormalised
+      test_copy['uncertainty'] = y_var
+      test_copy['actual_pm_2_5'] = testY
+
+      os.makedirs(output_folder + str(i), exist_ok = True)
+      test_copy.to_csv(output_folder + str(i) + '/test.csv')
+
+      print(y_mean_unnormalised)
+      print("Test")
+      print(test_copy)
       mse = mean_squared_error(y_mean_unnormalised, testY)
       mses[i] = mse
     return np.average(mses)
+
+# rbf_kernel = gpflow.kernels.SquaredExponential(lengthscales=[0.14, 0.167, 0.2, 0.2])
+rbf_kernel = gpflow.kernels.SquaredExponential(lengthscales=[0.14, 0.167, 0.2, 0.2])
 
 day_period = gpflow.kernels.Periodic(gpflow.kernels.SquaredExponential(active_dims=[0], lengthscales=[0.14]), period=7)
 hour_period = gpflow.kernels.Periodic(gpflow.kernels.SquaredExponential(active_dims=[1], lengthscales=[0.167]), period=24)
@@ -124,27 +148,13 @@ periodic_kernel = day_period + hour_period + (rbf1 * rbf2)
 gpflow.set_trainable(periodic_kernel.kernels[0].period, False)
 gpflow.set_trainable(periodic_kernel.kernels[1].period, False)
 
-periodic_mses = np.zeros(len(sites))
-for i in range(0, len(sites)):
-    mse = train_test_gp(df, sites[i], periodic_kernel)
-    periodic_mses[i] = mse
+if rbf:
+    kernel = rbf_kernel
+else:
+    kernel = periodic_kernel
 
-avg_rmse = np.average(np.sqrt(periodic_mses))
-max_rmse = np.sqrt(np.max(periodic_mses))
-min_rmse = np.sqrt(np.min(periodic_mses))
-print(min_rmse)
-print(avg_rmse)
-print(max_rmse)
+mse = train_test_forecast_gp(df, '60d2b5fd7e9018a1a8d38c1d', kernel)
+print(mse)
 
-site_rmses = dict(zip(sites, np.sqrt(periodic_mses)))
 
-output_folder = 'no_outliers/nowcasting_results/'
-
-os.makedirs(output_folder, exist_ok = True)
-
-np.savetxt(output_folder + '/rmses.txt', np.array([min_rmse, avg_rmse, max_rmse]))
-
-import csv
-with open(output_folder + '/site_rmses.csv', 'w') as fp:
-    writer = csv.writer(fp)
-    writer.writerows(site_rmses.items())
+# np.savetxt(output_folder + '/rmses.txt', np.array([min_rmse, avg_rmse, max_rmse]))

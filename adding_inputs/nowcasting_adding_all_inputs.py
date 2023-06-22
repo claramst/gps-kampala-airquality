@@ -165,13 +165,12 @@ def train_test_gp(df, site_id, kernel, input_features):
     return np.average(mses)
 
 day_period = gpflow.kernels.Periodic(gpflow.kernels.SquaredExponential(active_dims=[0], lengthscales=[0.14]), period=7)
-hour_period = gpflow.kernels.Periodic(gpflow.kernels.SquaredExponential(active_dims=[1], lengthscales=[0.04]), period=24)
+hour_period = gpflow.kernels.Periodic(gpflow.kernels.SquaredExponential(active_dims=[1], lengthscales=[0.167]), period=24)
 
 rbf1 = gpflow.kernels.SquaredExponential(active_dims=[2], lengthscales=[0.2])
 rbf2 = gpflow.kernels.SquaredExponential(active_dims=[3], lengthscales=[0.2])
 rbf3 = gpflow.kernels.SquaredExponential(active_dims=[4, 5, 6, 7, 8, 9])
 
-# periodic_kernel = day_period + hour_period + (rbf1 * rbf2) + rbf3
 periodic_kernel = day_period + hour_period + (rbf1 * rbf2) + rbf3
 
 periodic_kernel = day_period + hour_period + (rbf1 * rbf2)

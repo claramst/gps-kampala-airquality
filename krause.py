@@ -25,8 +25,13 @@ for site in df.site_id.unique():
   df_no_outliers = pd.concat([df_no_outliers, final_df], ignore_index=True)
 
 parser = argparse.ArgumentParser()
+parser.add_argument('--seed', type=int, default=0, help='random seed')
+parser.add_argument('--filter', action='store_true', help='filter sites within kampala sub counties border')
 
 args = parser.parse_args()
+i = args.seed
+filter = args.filter
+
 
 def datetime_to_epoch(datetime):
     """
@@ -204,34 +209,22 @@ def train_ST_SVGP_model(train_sites, test_sites, X_raw, Y_raw):
     print(rmse)
     return model, rmse
 
-# Krause functions
-def naiveSensorPlacement(cov, k, S, U):
-    """ This is an implementation of the first approximation method suggested in
-        the 'Near-Optimal Sensor Placement' paper.
-        Input:
-        - cov: covariance matrix
-        - k: number of Sensors to be placed
-        - V: indices of all position
-        - S: indices of all possible sensor positions
-        - U: indices of all impossible sensor positions
-    """
-    # print('Algorithm is starting for subdomain', subdomain, flush=True)
+def sensorPlacement(cov, k, S, U):
     A = []
     V = np.concatenate((S, U), axis=0)
-    for j in range(k):
-        S_A = np.setdiff1d(S, A).astype(int)
-        delta = np.array([])
-        for y in S_A:
+    for i in range(k):
+        S_without_A = np.setdiff1d(S, A).astype(int)
+        mi = np.array([])
+
+        for y in S_without_A:
             AHat = np.setdiff1d(V, np.append(A, [y]))
-            delta = np.append(delta, conditionalVariance(cov, y, A) / \
+            mi = np.append(mi, conditionalVariance(cov, y, A) /
                                       conditionalVariance(cov, y, AHat))
-        y_star = S_A[np.argmax(delta)]
+        y_star = S_without_A[np.argmax(mi)]
         A = np.append(A, y_star).astype(int)
     return A
 
-
 def conditionalVariance(cov, y, A):
-    """ This method calculates the conditional variance of y given A. """
     cov_yy = cov[y, y]
     cov_yA = cov[y, A]
     inv_cov_AA = np.linalg.inv(cov[np.ix_(A, A)])
@@ -243,6 +236,34 @@ def conditionalVariance(cov, y, A):
 df['timestamp'] = pd.to_datetime(df['timestamp'])
 df = df[['timestamp', 'pm2_5_calibrated_value', 'site_id', 'site_name', 'latitude', 'longitude']]
 df['epoch'] = datetime_to_epoch(df['timestamp'])
+
+# GENERATE U
+lat_range = np.linspace(0.24, 0.375, 7)
+lon_range = np.linspace(32.5276, 32.654, 7)
+lat_points, lon_points = np.meshgrid(lat_range, lon_range)
+lat_points = np.array([lat_points.flatten()]).T
+lon_points = np.array([lon_points.flatten()]).T
+
+U = np.concatenate((lat_points, lon_points), axis=1)
+
+# FILTERING POINTS IN KAMPALA
+if filter:
+    kampala_outline = gpd.read_file('subcountieskampala.geojson')
+    kampala_outline = kampala_outline.to_crs("EPSG:4326")
+
+    U_df = pd.DataFrame(U, columns=["latitude", "longitude"])
+
+    gdf_points = gpd.GeoDataFrame(
+        U_df,
+        geometry=gpd.points_from_xy(U[:, 1], U[:, 0]),
+    )
+
+    # Make sure both GeoDataFrames are using the same coordinate reference system
+    gdf_points.set_crs(kampala_outline.crs, inplace=True)
+    # Filter points that are within the Kampala border using spatial join
+    points_in_kampala_gdf = gpd.sjoin(gdf_points, kampala_outline, op="within")
+    U = points_in_kampala_gdf[['latitude', 'longitude']].to_numpy()
+U_norm = normalise(U, U)
 
 X = df[['epoch', 'latitude', 'longitude']].astype('float').to_numpy()
 Y = df[['pm2_5_calibrated_value']].to_numpy()
@@ -258,20 +279,20 @@ X_raw, Y_raw = pad_with_nan_to_make_grid(X.copy(), Y.copy())
 sites = df[['latitude', 'longitude']].drop_duplicates()
 
 # Select train, candidate and test sites
-train_sites = sites.sample(n=40, random_state = 1)
-candidate_sites = sites.drop(train_sites.index).sample(n = 15, random_state = 1)
+train_sites = sites.sample(n=30, random_state = i)
+candidate_sites = sites.drop(train_sites.index).sample(n = 20, random_state = i)
 test_sites = sites.drop(train_sites.index)
 test_sites = test_sites.drop(candidate_sites.index)
 
-mean_latitude = train_sites['latitude'].mean(axis=0)
-std_latitude = train_sites['latitude'].std(axis=0)
-mean_longitude = train_sites['longitude'].mean(axis=0)
-std_longitude = train_sites['longitude'].std(axis=0)
+mean_latitude = sites['latitude'].mean(axis=0)
+std_latitude = sites['latitude'].std(axis=0)
+mean_longitude = sites['longitude'].mean(axis=0)
+std_longitude = sites['longitude'].std(axis=0)
 
 # avg_uncertainty = np.average(posterior_var)
 model, rmse = train_ST_SVGP_model(train_sites, test_sites, X_raw, Y_raw)
 
-folder_outputs = 'krause_st_svgp'
+folder_outputs = 'krause_st_svgp/newU' + str(i) + '/'
 os.makedirs(folder_outputs, exist_ok = True)
 np.savetxt(folder_outputs + '/initial_rmse.txt', np.array([rmse]))
 train_sites.to_csv(folder_outputs + '/train_sites.csv')
@@ -279,66 +300,31 @@ candidate_sites.to_csv(folder_outputs + 'candidate_sites.csv')
 test_sites.to_csv(folder_outputs + '/test_sites.csv')
 
 
-# GENERATE U
-lat_range = np.linspace(0.21, 0.41, 15)
-lon_range = np.linspace(32.44, 32.7, 15)
-
-lat_points, lon_points = np.meshgrid(lat_range, lon_range)
-
-lat_points = np.array([lat_points.flatten()]).T
-lon_points = np.array([lon_points.flatten()]).T
-
-U = np.concatenate((lat_points, lon_points), axis=1)
-
-kampala_outline = gpd.read_file('subcountieskampala.geojson')
-kampala_outline = kampala_outline.to_crs("EPSG:4326")
-
-U_df = pd.DataFrame(U, columns=["latitude", "longitude"])
-
-gdf_points = gpd.GeoDataFrame(
-    U_df,
-    geometry=gpd.points_from_xy(U[:, 1], U[:, 0]),
-)
-
-# Make sure both GeoDataFrames are using the same coordinate reference system
-gdf_points.set_crs(kampala_outline.crs, inplace=True)
-
-# Filter points that are within the Kampala border using spatial join
-points_in_kampala_gdf = gpd.sjoin(gdf_points, kampala_outline, op="within")
-
-U = points_in_kampala_gdf[['latitude', 'longitude']].to_numpy()
-U_norm = normalise(U, U)
-
 train_sites_norm = normalise(train_sites.to_numpy(), sites.to_numpy())
 candidate_sites_norm = normalise(candidate_sites.to_numpy(), sites.to_numpy())
 
+S = np.concatenate((train_sites, candidate_sites))
 S_norm = np.concatenate((train_sites_norm, candidate_sites_norm))
 
 V = np.concatenate((S_norm, U_norm), axis=0)
+V_un_norm = np.concatenate((S, U), axis=0)
 
 cov = model.kernel(V, V)
-# cov = np.random.rand(113, 113)
 
-# 40 training sites. 15 candidate sites. 11 test sites.
-# 58 points in across kampala Kampala.
-S_indices = np.arange(0, 55, 1, dtype=int)
-U_indices = np.arange(55, 113, 1, dtype=int)
+# 30 training sites. 20 candidate sites. 16 test sites.
+# 49 points in across  Kampala.
+S_indices = np.arange(0, 50, 1, dtype=int)
+U_indices = np.arange(50, 99, 1, dtype=int)
 
-# A = naiveSensorPlacement(cov, 40, S_norm, U_norm)
-A = naiveSensorPlacement(cov, 40, S_indices, U_indices)
+A = sensorPlacement(cov, 30, S_indices, U_indices)
 
-new_sensor_locations = V[A]
-new_sensor_locations[0] = (new_sensor_locations[0] * std_latitude) + mean_latitude
-new_sensor_locations[1] = (new_sensor_locations[1] * std_longitude) + mean_longitude
+new_sensor_locations = V_un_norm[A]
 
 np.savetxt(folder_outputs + '/new_sensor_locations.txt', np.array(new_sensor_locations))
 
 new_sensor_locations_df = pd.DataFrame(new_sensor_locations, columns=["latitude", "longitude"])
 
-# new_sensor_locations_df = un_normalise_df(new_sensor_locations_norm_df, train_sites)
-print(new_sensor_locations_df)
 model, rmse = train_ST_SVGP_model(new_sensor_locations_df, test_sites, X_raw, Y_raw)
 
-folder_outputs = 'krause_st_svgp'
 np.savetxt(folder_outputs + '/post_krause_rmse.txt', np.array([rmse]))
 new_sensor_locations_df.to_csv(folder_outputs + '/optimal_sensor_locations.csv')

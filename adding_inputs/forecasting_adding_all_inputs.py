@@ -19,18 +19,6 @@ tf.config.threading.set_intra_op_parallelism_threads(1)
 df = pd.read_csv('nov-data.csv')
 weather_df = pd.read_csv('weather-data.csv')
 
-# nov_df_no_outliers = pd.DataFrame()
-#
-# for site in nov_df.site_id.unique():
-#   site_df = nov_df[nov_df['site_id']==site]
-#   Q1 = site_df['pm2_5_calibrated_value'].quantile(0.25)
-#   Q3 = site_df['pm2_5_calibrated_value'].quantile(0.75)
-#   IQR = Q3 - Q1
-#   final_df = site_df[~((site_df['pm2_5_calibrated_value']<(Q1-1.5*IQR)) | (site_df['pm2_5_calibrated_value']>(Q3+1.5*IQR)))]
-#   nov_df_no_outliers = pd.concat([nov_df_no_outliers, final_df], ignore_index=True)
-#
-# df = nov_df_no_outliers
-
 sites = df.site_id.unique()
 print("Number of sites:")
 print(sites.shape)
@@ -53,10 +41,6 @@ def add_times_to_df(df):
         df.insert(3, 'IndexDay', df['Day'].dt.weekday)
 
 add_times_to_df(df)
-# df = df[['Day', 'Time', 'IndexTime', 'IndexDay', 'timestamp',
-# 'pm2_5_calibrated_value', 'pm2_5_raw_value', 'latitude', 'longitude', 'site_id',
-# 'wind_speed', 'wind_gusts', 'wind_direction', 'temperature', 'precipitation',
-# 'humidity']]
 df = df[['Day', 'Time', 'IndexTime', 'IndexDay', 'timestamp',
 'pm2_5_calibrated_value', 'pm2_5_raw_value', 'latitude', 'longitude', 'site_id']]
 
@@ -73,8 +57,6 @@ print(last_day.site_id.unique().shape)
 last_hour = last_day[last_day['IndexTime']==23]
 print(last_hour.site_id.unique().shape)
 
-
-# #### Forecasting last hour
 
 train = df.drop(last_day.index)
 train_no_outliers = pd.DataFrame()
@@ -130,9 +112,6 @@ def train_test_forecast_hour_gp(df, site_id, kernel, input_features):
         else:
             rand_train = train
 
-        # X = rand_train[['IndexDay', 'IndexTime', 'latitude', 'longitude',
-        # 'wind_speed', 'wind_gusts', 'wind_direction', 'temperature', 'precipitation',
-        # 'humidity']].astype('float').to_numpy()
         X = rand_train[['IndexDay', 'IndexTime', 'latitude', 'longitude',
         'windspeed', 'cloudcover', 'winddir', 'temp', 'precip', 'humidity']].astype('float').to_numpy()
 
@@ -163,9 +142,6 @@ def train_test_forecast_hour_gp(df, site_id, kernel, input_features):
         opt = gpflow.optimizers.Scipy()
         opt.minimize(model.training_loss, model.trainable_variables)
 
-        # testX = test[['IndexDay', 'IndexTime', 'latitude', 'longitude',
-        # 'wind_speed', 'wind_gusts', 'wind_direction', 'temperature', 'precipitation',
-        # 'humidity']].astype('float').to_numpy()
         testX = test[['IndexDay', 'IndexTime', 'latitude', 'longitude',
         'windspeed', 'cloudcover', 'winddir', 'temp', 'precip', 'humidity']].astype('float').to_numpy()
 
@@ -195,13 +171,12 @@ def train_test_forecast_hour_gp(df, site_id, kernel, input_features):
     return np.average(mses)
 
 day_period = gpflow.kernels.Periodic(gpflow.kernels.SquaredExponential(active_dims=[0], lengthscales=[0.14]), period=7)
-hour_period = gpflow.kernels.Periodic(gpflow.kernels.SquaredExponential(active_dims=[1], lengthscales=[0.04]), period=24)
+hour_period = gpflow.kernels.Periodic(gpflow.kernels.SquaredExponential(active_dims=[1], lengthscales=[0.167]), period=24)
 
 rbf1 = gpflow.kernels.SquaredExponential(active_dims=[2], lengthscales=[0.2])
 rbf2 = gpflow.kernels.SquaredExponential(active_dims=[3], lengthscales=[0.2])
 rbf3 = gpflow.kernels.SquaredExponential(active_dims=[4, 5, 6, 7, 8, 9])
 
-# periodic_kernel = day_period + hour_period + (rbf1 * rbf2) + rbf3
 periodic_kernel = day_period + hour_period + (rbf1 * rbf2) + rbf3
 gpflow.set_trainable(periodic_kernel.kernels[0].period, False)
 gpflow.set_trainable(periodic_kernel.kernels[1].period, False)

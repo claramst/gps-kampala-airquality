@@ -41,10 +41,6 @@ def add_times_to_df(df):
         df.insert(3, 'IndexDay', df['Day'].dt.weekday)
 
 add_times_to_df(df)
-# df = df[['Day', 'Time', 'IndexTime', 'IndexDay', 'timestamp',
-# 'pm2_5_calibrated_value', 'pm2_5_raw_value', 'latitude', 'longitude', 'site_id',
-# 'wind_speed', 'wind_gusts', 'wind_direction', 'temperature', 'precipitation',
-# 'humidity']]
 df = df[['Day', 'Time', 'IndexTime', 'IndexDay', 'timestamp',
 'pm2_5_calibrated_value', 'pm2_5_raw_value', 'latitude', 'longitude', 'site_id']]
 
@@ -55,18 +51,6 @@ weather_df = weather_df.set_index('datetime').tz_localize('Africa/Kampala').tz_c
 df = df.merge(weather_df, left_on='timestamp', right_on='datetime')
 df = df.drop(['windgust', 'datetime'], axis=1)
 
-# mean_wind_speed = df['wind_speed'].mean(axis=0)
-# std_wind_speed = df['wind_speed'].std(axis=0)
-# mean_wind_direction = df['wind_direction'].mean(axis=0)
-# std_wind_direction = df['wind_direction'].std(axis=0)
-# mean_wind_gusts = df['wind_gusts'].mean(axis=0)
-# std_wind_gusts = df['wind_gusts'].std(axis=0)
-# mean_temperature = df['temperature'].mean(axis=0)
-# std_temperature = df['temperature'].std(axis=0)
-# mean_precipitation = df['precipitation'].mean(axis=0)
-# std_precipitation = df['precipitation'].std(axis=0)
-# mean_humidity = df['humidity'].mean(axis=0)
-# std_humidity = df['humidity'].std(axis=0)
 
 last_day = df[df['Day'].astype(str)=='2021-11-30']
 print(last_day.site_id.unique().shape)
@@ -131,9 +115,6 @@ def train_test_forecast_hour_gp(df, site_id, kernel, input_features):
         X = rand_train[['IndexDay', 'IndexTime', 'latitude', 'longitude',
         'windspeed', 'cloudcover', 'winddir', 'temp', 'precip', 'humidity']].astype('float').to_numpy()
 
-        # X = rand_train[['IndexDay', 'IndexTime', 'latitude', 'longitude',
-        # 'wind_speed', 'wind_gusts', 'wind_direction', 'temperature', 'precipitation',
-        # 'humidity']].astype('float').to_numpy()
         Y = rand_train[['pm2_5_calibrated_value']].to_numpy()
         X_normalised = X.copy().T
         X_normalised[2] = (X_normalised[2] - mean_latitude) / std_latitude
@@ -162,9 +143,6 @@ def train_test_forecast_hour_gp(df, site_id, kernel, input_features):
         testX = test[['IndexDay', 'IndexTime', 'latitude', 'longitude',
         'windspeed', 'cloudcover', 'winddir', 'temp', 'precip', 'humidity']].astype('float').to_numpy()
 
-        # testX = test[['IndexDay', 'IndexTime', 'latitude', 'longitude',
-        # 'wind_speed', 'wind_gusts', 'wind_direction', 'temperature', 'precipitation',
-        # 'humidity']].astype('float').to_numpy()
         testY = test[['pm2_5_calibrated_value']].to_numpy()
 
         testX_normalised = testX.copy().T
@@ -189,7 +167,7 @@ def train_test_forecast_hour_gp(df, site_id, kernel, input_features):
     return np.average(mses)
 
 day_period = gpflow.kernels.Periodic(gpflow.kernels.SquaredExponential(active_dims=[0], lengthscales=[0.14]), period=7)
-hour_period = gpflow.kernels.Periodic(gpflow.kernels.SquaredExponential(active_dims=[1], lengthscales=[0.04]), period=24)
+hour_period = gpflow.kernels.Periodic(gpflow.kernels.SquaredExponential(active_dims=[1], lengthscales=[0.167]), period=24)
 
 rbf1 = gpflow.kernels.SquaredExponential(active_dims=[2], lengthscales=[0.2])
 rbf2 = gpflow.kernels.SquaredExponential(active_dims=[3], lengthscales=[0.2])
@@ -200,8 +178,6 @@ gpflow.set_trainable(periodic_kernel.kernels[0].period, False)
 gpflow.set_trainable(periodic_kernel.kernels[1].period, False)
 
 base_features = [0, 1, 2, 3]
-# feature_names = ['wind_speed', 'wind_gusts', 'wind_direction', 'temperature', 'precipitation',
-# 'humidity']
 feature_names = ['windspeed', 'cloudcover', 'winddir', 'temp', 'precip', 'humidity']
 
 for inputIndex in range(4, 10):

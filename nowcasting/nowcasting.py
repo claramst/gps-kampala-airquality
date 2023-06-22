@@ -43,49 +43,23 @@ def add_times_to_df(df):
         df.insert(3, 'IndexDay', df['Day'].dt.weekday)
 
 add_times_to_df(df)
-df = df[['Day', 'Time', 'IndexTime', 'IndexDay', 'timestamp', 'pm2_5_calibrated_value', 'pm2_5_raw_value', 'latitude', 'longitude', 'site_id']]
+df = df[['Day', 'Time', 'IndexTime', 'IndexDay', 'timestamp', 'pm2_5_raw_value', 'pm2_5_calibrated_value', 'latitude', 'longitude', 'site_id']]
 
-mean_calibrated_pm2_5 = df['pm2_5_calibrated_value'].mean(axis=0)
-std_calibrated_pm2_5 = df['pm2_5_calibrated_value'].std(axis=0)
-mean_raw_pm2_5 = df['pm2_5_raw_value'].mean(axis=0)
-std_raw_pm2_5 = df['pm2_5_raw_value'].std(axis=0)
-mean_latitude = df['latitude'].mean(axis=0)
-std_latitude = df['latitude'].std(axis=0)
-mean_longitude = df['longitude'].mean(axis=0)
-std_longitude = df['longitude'].std(axis=0)
-
-
-# from geopy.distance import geodesic
-
-
-# def get_closest_data(df, site_id):
-#     # Filter the data frame to only include rows with the given site name
-#     site_latitude = df[df['site_id'] == site_id].iloc[0].latitude
-#     site_longitude = df[df['site_id'] == site_id].iloc[0].longitude
-#
-#     all_rows = df[df['site_id'] != site_id]
-#
-#     # Calculate the distance between each row and the site of interest
-#     all_rows['distance'] = all_rows.apply(lambda row: geodesic((row['latitude'], row['longitude']),
-#                                                    (site_latitude, site_longitude)).km, axis=1)
-#
-#     # Sort the data frame by distance, ascending order
-#     all_rows.sort_values(by=['distance'], inplace=True)
-#     closest_sites = all_rows.site_id.unique()
-#
-#     # take top 3 sites
-#     top_3 = closest_sites[:3]
-#     print(top_3)
-#     closest_rows = df[df['site_id'].isin(top_3)]
-#
-#     return closest_rows
-#
 
 def train_test_gp(df, site_id, kernel):
     mses = np.zeros((4))
     # train = get_closest_data(df, site_id)
     test = df[df['site_id']==site_id]
     train = df.drop(test.index)
+
+    mean_calibrated_pm2_5 = train['pm2_5_calibrated_value'].mean(axis=0)
+    std_calibrated_pm2_5 = train['pm2_5_calibrated_value'].std(axis=0)
+    mean_raw_pm2_5 = train['pm2_5_raw_value'].mean(axis=0)
+    std_raw_pm2_5 = train['pm2_5_raw_value'].std(axis=0)
+    mean_latitude = train['latitude'].mean(axis=0)
+    std_latitude = train['latitude'].std(axis=0)
+    mean_longitude = train['longitude'].mean(axis=0)
+    std_longitude = train['longitude'].std(axis=0)
 
     for i in range(4):
       if len(train) > 1000:
@@ -113,6 +87,7 @@ def train_test_gp(df, site_id, kernel):
       opt = gpflow.optimizers.Scipy()
       opt.minimize(model.training_loss, model.trainable_variables)
 
+
       testX = test[['IndexDay', 'IndexTime', 'latitude', 'longitude']].astype('float').to_numpy()
       testY = test[['pm2_5_calibrated_value']].to_numpy()
 
@@ -130,10 +105,12 @@ def train_test_gp(df, site_id, kernel):
       mses[i] = mse
     return np.average(mses)
 
-rbf_kernel = gpflow.kernels.SquaredExponential(lengthscales=[0.14, 0.04, 0.2, 0.2])
+# 0.167 = 4/24. We expect pm2.5 levels to vary every 4 hours.
+# 0.14 = 1/7. We expect pm2.5 levels to vary every day.
+rbf_kernel = gpflow.kernels.SquaredExponential(lengthscales=[0.14, 0.167, 0.2, 0.2])
 
 day_period = gpflow.kernels.Periodic(gpflow.kernels.SquaredExponential(active_dims=[0], lengthscales=[0.14]), period=7)
-hour_period = gpflow.kernels.Periodic(gpflow.kernels.SquaredExponential(active_dims=[1], lengthscales=[0.04]), period=24)
+hour_period = gpflow.kernels.Periodic(gpflow.kernels.SquaredExponential(active_dims=[1], lengthscales=[0.167]), period=24)
 
 rbf1 = gpflow.kernels.SquaredExponential(active_dims=[2], lengthscales=[0.2])
 rbf2 = gpflow.kernels.SquaredExponential(active_dims=[3], lengthscales=[0.2])

@@ -62,37 +62,18 @@ for site_dir in os.listdir(results_dir):
     f = open(os.path.join(path + "/total_time_taken.txt"), "r")
     total_time_taken += float(f.read().strip())
 
-    # for dir in dirs:
-    #     # for filename in os.listdir(dir):
-    #     f = open(os.path.join(root, dir + "/" + sub_folder + "/rmse.txt"), "r")
-    #     site_mses[dir] = float(f.read().strip())
-    #
-    #     f = open(os.path.join(root, dir + "/" + sub_folder + "/avg_uncertainty.txt"), "r")
-    #     site_vars[dir] = float(f.read().strip())
-    #
-    #     f = open(os.path.join(root, dir + "/" + sub_folder + "/total_time_taken.txt"), "r")
-    #     total_time_taken += float(f.read().strip())
 
 avg_time_taken = total_time_taken / len(site_mses)
-#
-# with open(output_folder + '/site_rmses', 'wb') as fp:
-#     pickle.dump(site_mses, fp)
+
 os.makedirs(results_dir + sub_folder, exist_ok = True)
 
 import csv
 with open(results_dir + sub_folder + '/site_rmses.csv', 'w') as fp:
     writer = csv.writer(fp)
     writer.writerows(site_mses.items())
-    # for key, value in site_mses.items():
-    #    writer.writerow([key, value])
-    # [fp.write('{0},{1}\n'.format(key, value)) for key, value in site_mses.items()]
+
 with open(results_dir + sub_folder + '/site_vars.csv', 'w') as fp:
     writer = csv.writer(fp)
     writer.writerows(site_vars.items())
 
 np.savetxt(results_dir + sub_folder + '/avg_time_taken.txt', np.array([avg_time_taken]))
-
-# with open(output_folder + '/site_rmses', 'rb') as fp:
-#     sites_mses = pickle.load(fp)
-#
-# print(sites_mses)
